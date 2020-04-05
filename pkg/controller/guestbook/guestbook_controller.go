@@ -103,9 +103,8 @@ func (r *ReconcileGuestbook) Reconcile(request reconcile.Request) (reconcile.Res
 
 	// Check if the deployment already exists for master, if not create a new one
 	master := &appsv1.Deployment{}
-	err = r.client.Get(context.TODO(), types.NamespacedName{Name: guestbook.Name + "-redis-master", Namespace: guestbook.Namespace}, master)
+	err = r.client.Get(context.TODO(), types.NamespacedName{Name: "redis-master", Namespace: guestbook.Namespace}, master)
 	if err != nil && errors.IsNotFound(err) {
-		// Define a new deployment for master
 		dep := r.deploymentForMaster(guestbook)
 		reqLogger.Info("Creating a new Deployment", "Deployment.Namespace", dep.Namespace, "Deployment.Name", dep.Name)
 		err = r.client.Create(context.TODO(), dep)
@@ -113,7 +112,6 @@ func (r *ReconcileGuestbook) Reconcile(request reconcile.Request) (reconcile.Res
 			reqLogger.Error(err, "Failed to create new Deployment", "Deployment.Namespace", dep.Namespace, "Deployment.Name", dep.Name)
 			return reconcile.Result{}, err
 		}
-		// Deployment created successfully - return and requeue
 		return reconcile.Result{Requeue: true}, nil
 	} else if err != nil {
 		reqLogger.Error(err, "Failed to get Deployment")
@@ -133,8 +131,6 @@ func (r *ReconcileGuestbook) Reconcile(request reconcile.Request) (reconcile.Res
 		return reconcile.Result{Requeue: true}, nil
 	}
 
-	// Update the Guestbook status with the pod names
-	// List the pods for this master deployment
 	masterPodList := &corev1.PodList{}
 	listOpts := []client.ListOption{
 		client.InNamespace(master.Namespace),
@@ -146,11 +142,26 @@ func (r *ReconcileGuestbook) Reconcile(request reconcile.Request) (reconcile.Res
 		return reconcile.Result{}, err
 	}
 
+	masterService := corev1.Service{}
+	err = r.client.Get(context.TODO(), types.NamespacedName{Name: "redis-master", Namespace: guestbook.Namespace}, &masterService)
+	if err != nil && errors.IsNotFound(err) {
+		ser := r.createService(guestbook, "redis-master")
+		reqLogger.Info("Creating a new Service", "Service.Namespace", ser.Namespace, "Service.Name", ser.Name)
+		err = r.client.Create(context.TODO(), ser)
+		if err != nil {
+			reqLogger.Error(err, "Failed to create new Service", "Service.Namespace", ser.Namespace, "Service.Name", ser.Name)
+			return reconcile.Result{}, err
+		}
+		return reconcile.Result{Requeue: true}, nil
+	} else if err != nil {
+		reqLogger.Error(err, "Failed to get Service")
+		return reconcile.Result{}, err
+	}
+
 	// Check if the deployment already exists for slave, if not create a new one
 	slave := &appsv1.Deployment{}
-	err = r.client.Get(context.TODO(), types.NamespacedName{Name: guestbook.Name + "-redis-slave", Namespace: guestbook.Namespace}, slave)
+	err = r.client.Get(context.TODO(), types.NamespacedName{Name: "redis-slave", Namespace: guestbook.Namespace}, slave)
 	if err != nil && errors.IsNotFound(err) {
-		// Define a new deployment for master
 		dep := r.deploymentForSlave(guestbook)
 		reqLogger.Info("Creating a new Slave Deployment", "Deployment.Namespace", dep.Namespace, "Deployment.Name", dep.Name)
 		err = r.client.Create(context.TODO(), dep)
@@ -165,10 +176,9 @@ func (r *ReconcileGuestbook) Reconcile(request reconcile.Request) (reconcile.Res
 		return reconcile.Result{}, err
 	}
 
-	// Ensure the slave deployment size is 1
 	var slaveSize int32 = 2
 	if *slave.Spec.Replicas != slaveSize {
-		slave.Spec.Replicas = &masterSize
+		slave.Spec.Replicas = &slaveSize
 		err = r.client.Update(context.TODO(), slave)
 		if err != nil {
 			reqLogger.Error(err, "Failed to update slave Deployment", "Deployment.Namespace", slave.Namespace, "Deployment.Name", slave.Name)
@@ -178,25 +188,96 @@ func (r *ReconcileGuestbook) Reconcile(request reconcile.Request) (reconcile.Res
 		return reconcile.Result{Requeue: true}, nil
 	}
 
-	// Update the Guestbook status with the pod names
-	// List the pods for this master deployment
 	slavePodList := &corev1.PodList{}
-	listOpts := []client.ListOption{
+	listOptsSlave := []client.ListOption{
 		client.InNamespace(master.Namespace),
 		client.MatchingLabels(getLabels(guestbook.Name, "redis-slave")),
 	}
 
-	if err = r.client.List(context.TODO(), masterPodList, listOpts...); err != nil {
-		reqLogger.Error(err, "Failed to list slave pods", "master.Namespace", slave.Namespace, "slave.Name", slave.Name)
+	if err = r.client.List(context.TODO(), slavePodList, listOptsSlave...); err != nil {
+		reqLogger.Error(err, "Failed to list pods", "slave.Namespace", slave.Namespace, "slave.Name", slave.Name)
 		return reconcile.Result{}, err
 	}
 
+	slaveService := corev1.Service{}
+	err = r.client.Get(context.TODO(), types.NamespacedName{Name: "redis-slave", Namespace: guestbook.Namespace}, &slaveService)
+	if err != nil && errors.IsNotFound(err) {
+		ser := r.createService(guestbook, "redis-slave")
+		reqLogger.Info("Creating a new Slave Service", "Service.Namespace", ser.Namespace, "Service.Name", ser.Name)
+		err = r.client.Create(context.TODO(), ser)
+		if err != nil {
+			reqLogger.Error(err, "Failed to create new slave Service", "Service.Namespace", ser.Namespace, "Service.Name", ser.Name)
+			return reconcile.Result{}, err
+		}
+		return reconcile.Result{Requeue: true}, nil
+	} else if err != nil {
+		reqLogger.Error(err, "Failed to get Service")
+		return reconcile.Result{}, err
+	}
+
+	// ============================================================================================
+	// Check if the deployment already exists for guestbook, if not create a new one
+	frontend := &appsv1.Deployment{}
+	err = r.client.Get(context.TODO(), types.NamespacedName{Name: "frontend", Namespace: guestbook.Namespace}, frontend)
+	if err != nil && errors.IsNotFound(err) {
+		dep := r.deploymentForFrontend(guestbook)
+		reqLogger.Info("Creating a new frontend Deployment", "Deployment.Namespace", dep.Namespace, "Deployment.Name", dep.Name)
+		err = r.client.Create(context.TODO(), dep)
+		if err != nil {
+			reqLogger.Error(err, "Failed to create new frontend Deployment", "Deployment.Namespace", dep.Namespace, "Deployment.Name", dep.Name)
+			return reconcile.Result{}, err
+		}
+		// Deployment created successfully - return and requeue
+		return reconcile.Result{Requeue: true}, nil
+	} else if err != nil {
+		reqLogger.Error(err, "Failed to get slave Deployment")
+		return reconcile.Result{}, err
+	}
+
+	var frontendSize int32 = 3
+	if *frontend.Spec.Replicas != frontendSize {
+		frontend.Spec.Replicas = &frontendSize
+		err = r.client.Update(context.TODO(), frontend)
+		if err != nil {
+			reqLogger.Error(err, "Failed to update frontend Deployment", "frontend.Namespace", frontend.Namespace, "frontend.Name", frontend.Name)
+			return reconcile.Result{}, err
+		}
+		// Spec updated - return and requeue
+		return reconcile.Result{Requeue: true}, nil
+	}
+
+	frontendPodList := &corev1.PodList{}
+	listOptsfrontend := []client.ListOption{
+		client.InNamespace(master.Namespace),
+		client.MatchingLabels(getLabels(guestbook.Name, "frontend")),
+	}
+
+	if err = r.client.List(context.TODO(), frontendPodList, listOptsfrontend...); err != nil {
+		reqLogger.Error(err, "Failed to list pods", "frontend.Namespace", frontend.Namespace, "frontend.Name", frontend.Name)
+		return reconcile.Result{}, err
+	}
+
+	frontendService := corev1.Service{}
+	err = r.client.Get(context.TODO(), types.NamespacedName{Name: "frontend", Namespace: guestbook.Namespace}, &frontendService)
+	if err != nil && errors.IsNotFound(err) {
+		ser := r.createServiceFrontend(guestbook, "frontend")
+		reqLogger.Info("Creating a new frontend Service", "Service.Namespace", ser.Namespace, "Service.Name", ser.Name)
+		err = r.client.Create(context.TODO(), ser)
+		if err != nil {
+			reqLogger.Error(err, "Failed to create new frontend Service", "Service.Namespace", ser.Namespace, "Service.Name", ser.Name)
+			return reconcile.Result{}, err
+		}
+		return reconcile.Result{Requeue: true}, nil
+	} else if err != nil {
+		reqLogger.Error(err, "Failed to get Service")
+		return reconcile.Result{}, err
+	}
+
+	// ============================================================================================
+
 	guestbook.Status.RedisMasterPods = getPodNames(masterPodList.Items)
-	guestbook.Status.RedisMasterDeployment = master.Name
-	guestbook.Status.RedisSlaveDeployment = "guru"
 	guestbook.Status.RedisSlavePods = getPodNames(slavePodList.Items)
-	guestbook.Status.GuestBookDeployment = "one"
-	guestbook.Status.GuestBookPods = getPodNames(masterPodList.Items)
+	guestbook.Status.GuestBookPods = getPodNames(frontendPodList.Items)
 
 	err = r.client.Status().Update(context.TODO(), guestbook)
 	if err != nil {
@@ -207,13 +288,53 @@ func (r *ReconcileGuestbook) Reconcile(request reconcile.Request) (reconcile.Res
 	return reconcile.Result{}, nil
 }
 
+func (r *ReconcileGuestbook) deploymentForFrontend(m *gurunathv1alpha1.Guestbook) *appsv1.Deployment {
+	ls := getLabels(m.Name, "frontend")
+	// image := m.Spec.RedisMaster
+	var replicas int32 = 3
+	dep := &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "frontend",
+			Namespace: m.Namespace,
+		},
+		Spec: appsv1.DeploymentSpec{
+			Replicas: &replicas,
+			Selector: &metav1.LabelSelector{
+				MatchLabels: ls,
+			},
+			Template: corev1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels: ls,
+				},
+				Spec: corev1.PodSpec{
+					Containers: []corev1.Container{{
+						Image: m.Spec.GuestBook,
+						Name:  "php-redis",
+						Ports: []corev1.ContainerPort{{
+							ContainerPort: 80,
+							Name:          "redis-default",
+						}},
+						Env: []corev1.EnvVar{{
+							Name:  "GET_HOSTS_FROM",
+							Value: "dns",
+						}},
+					}},
+				},
+			},
+		},
+	}
+	// Set Memcached instance as the owner and controller
+	controllerutil.SetControllerReference(m, dep, r.scheme)
+	return dep
+}
+
 func (r *ReconcileGuestbook) deploymentForMaster(m *gurunathv1alpha1.Guestbook) *appsv1.Deployment {
 	ls := getLabels(m.Name, "redis-master")
 	// image := m.Spec.RedisMaster
 	var replicas int32 = 1
 	dep := &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      m.Name + "-redis-master",
+			Name:      "redis-master",
 			Namespace: m.Namespace,
 		},
 		Spec: appsv1.DeploymentSpec{
@@ -249,7 +370,7 @@ func (r *ReconcileGuestbook) deploymentForSlave(m *gurunathv1alpha1.Guestbook) *
 	var replicas int32 = 2
 	dep := &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      m.Name + "-redis-slave",
+			Name:      "redis-slave",
 			Namespace: m.Namespace,
 		},
 		Spec: appsv1.DeploymentSpec{
@@ -263,8 +384,8 @@ func (r *ReconcileGuestbook) deploymentForSlave(m *gurunathv1alpha1.Guestbook) *
 				},
 				Spec: corev1.PodSpec{
 					Containers: []corev1.Container{{
-						Image: m.Spec.RedisMaster,
-						Name:  "redis-master",
+						Image: m.Spec.RedisSlave,
+						Name:  "redis-slave",
 						Ports: []corev1.ContainerPort{{
 							ContainerPort: 6379,
 							Name:          "redis-default",
@@ -283,6 +404,46 @@ func (r *ReconcileGuestbook) deploymentForSlave(m *gurunathv1alpha1.Guestbook) *
 	return dep
 }
 
+func (r *ReconcileGuestbook) createServiceFrontend(m *gurunathv1alpha1.Guestbook, name string) *corev1.Service {
+	ls := getLabels(m.Name, name)
+	ser := &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: m.Namespace,
+			Labels:    ls,
+		},
+		Spec: corev1.ServiceSpec{
+			Type: "NodePort",
+			Ports: []corev1.ServicePort{{
+				Port: 80,
+			}},
+			Selector: ls,
+		},
+	}
+	controllerutil.SetControllerReference(m, ser, r.scheme)
+	return ser
+}
+
+func (r *ReconcileGuestbook) createService(m *gurunathv1alpha1.Guestbook, name string) *corev1.Service {
+	ls := getLabels(m.Name, name)
+	ser := &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: m.Namespace,
+			Labels:    ls,
+		},
+		Spec: corev1.ServiceSpec{
+
+			Ports: []corev1.ServicePort{{
+				Port: 6379,
+			}},
+			Selector: ls,
+		},
+	}
+	controllerutil.SetControllerReference(m, ser, r.scheme)
+	return ser
+}
+
 // labelsForMemcached returns the labels for selecting the resources
 // belonging to the given memcached CR name.
 func getLabels(name string, role string) map[string]string {
@@ -298,9 +459,12 @@ func getMasterPod(pods []corev1.Pod) string {
 }
 
 func getPodNames(pods []corev1.Pod) []string {
+	log.WithValues("*********in get pod names", len(pods))
+
 	var podNames []string
 
 	for _, pod := range pods {
+		log.WithValues("*********in get pod names", pod.Name)
 		podNames = append(podNames, pod.Name)
 	}
 	return podNames
