@@ -1,0 +1,9 @@
+apiVersion: gurunath.io/v1alpha1
+kind: Guestbook
+metadata:
+  name: example-guestbook
+spec:
+  # Add fields here
+  redisMaster: k8s.gcr.io/redis:e2e
+  redisSlave: gcr.io/google_samples/gb-redisslave:v3
+  guestBook: gcr.io/google-samples/gb-frontend:v4

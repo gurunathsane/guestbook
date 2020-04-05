@@ -1,0 +1,87 @@
+apiVersion: apiextensions.k8s.io/v1beta1
+kind: CustomResourceDefinition
+metadata:
+  name: guestbooks.gurunath.io
+spec:
+  group: gurunath.io
+  names:
+    kind: Guestbook
+    listKind: GuestbookList
+    plural: guestbooks
+    singular: guestbook
+  scope: Namespaced
+  subresources:
+    status: {}
+  validation:
+    openAPIV3Schema:
+      description: Guestbook is the Schema for the guestbooks API
+      properties:
+        apiVersion:
+          description: 'APIVersion defines the versioned schema of this representation
+            of an object. Servers should convert recognized schemas to the latest
+            internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+          type: string
+        kind:
+          description: 'Kind is a string value representing the REST resource this
+            object represents. Servers may infer this from the endpoint the client
+            submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+          type: string
+        metadata:
+          type: object
+        spec:
+          description: GuestbookSpec defines the desired state of Guestbook
+          properties:
+            guestBook:
+              type: string
+            redisMaster:
+              type: string
+            redisSlave:
+              description: 'INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
+                Important: Run "operator-sdk generate k8s" to regenerate code after
+                modifying this file Add custom validation using kubebuilder tags:
+                https://book-v1.book.kubebuilder.io/beyond_basics/generating_crd.html'
+              type: string
+          required:
+          - guestBook
+          - redisMaster
+          - redisSlave
+          type: object
+        status:
+          description: GuestbookStatus defines the observed state of Guestbook
+          properties:
+            guestBookDeployment:
+              type: string
+            guestBookPods:
+              items:
+                type: string
+              type: array
+            redisMasterDeployment:
+              type: string
+            redisMasterPods:
+              items:
+                type: string
+              type: array
+            redisSlavesDeployment:
+              description: 'INSERT ADDITIONAL STATUS FIELD - define observed state
+                of cluster Important: Run "operator-sdk generate k8s" to regenerate
+                code after modifying this file Add custom validation using kubebuilder
+                tags: https://book-v1.book.kubebuilder.io/beyond_basics/generating_crd.html'
+              type: string
+            redisSlavesPods:
+              items:
+                type: string
+              type: array
+          required:
+          - guestBookDeployment
+          - guestBookPods
+          - redisMasterDeployment
+          - redisMasterPods
+          - redisSlavesDeployment
+          - redisSlavesPods
+          type: object
+      type: object
+  version: v1alpha1
+  versions:
+  - name: v1alpha1
+    served: true
+    storage: true
