@@ -37,13 +37,11 @@ I will update this repo step by step and tag it from 00. I will try to explain h
       we will add validations in next steps
     - GuestbookStatus
       ```
-      RedisSlaveDeployment  string   `json:"redisSlavesDeployment"`
-      RedisSlavePods        []string `json:"redisSlavesPods"`
-      RedisMasterDeployment string   `json:"redisMasterDeployment"`
-      RedisMasterPod        string   `json:"redisMasterPod"`
-      GuestBookDeployment   string   `json:"guestBookDeployment"`
-      GuestBookPod          string   `json:"guestBookPod"`
+      RedisSlavePods  []string `json:"redisSlavesPods"`
+      RedisMasterPods []string `json:"redisMasterPods"`
+      GuestBookPods   []string `json:"guestBookPods"`
       ```
+  - for simplicity not added any validations till now
   - After updating file always run the following command to update the generated code for that resource type
   
     `operator-sdk generate k8s`
@@ -55,4 +53,12 @@ I will update this repo step by step and tag it from 00. I will try to explain h
     `operator-sdk add controller --api-version=gurunath/v1alpha1 --kind=Guestbook`
 
     This will scaffold a new Controller implementation under `pkg/controller/guestbook`
-    
+  - comments are added in the controller please go through the file.
+
+- **Deployment**
+  - generate docker image for the operator with command `operator-sdk build gurunath/guestbook-operator:0.0.1` where `gurunath/guestbook-operator` is public docker repo and `0.0.1` is the tag
+  - after docker image build push the image to repo.
+  - create deployment, role, role binding and service account for the operator. Operator-sdk provide manifests files in `deploy` directory 
+
+- **Demo
+  - Deployed this operator as [Katakoda scenario](https://www.katacoda.com/gurunath.sane@gmail.com/scenarios/guestbook-operator) please take a look. 

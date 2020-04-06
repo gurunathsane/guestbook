@@ -424,7 +424,8 @@ func (r *ReconcileGuestbook) createServiceFrontend(m *gurunathv1alpha1.Guestbook
 		Spec: corev1.ServiceSpec{
 			Type: "NodePort",
 			Ports: []corev1.ServicePort{{
-				Port: 80,
+				Port:     80,
+				NodePort: 30080,
 			}},
 			Selector: ls,
 		},
