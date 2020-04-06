@@ -16,7 +16,7 @@ spec:
       containers:
         - name: guestbook
           # Replace this with the built image name
-          image: REPLACE_IMAGE
+          image: gurunath/guestbook-operator:0.0.1
           command:
           - guestbook
           imagePullPolicy: Always

@@ -8,6 +8,8 @@ spec:
     kind: Guestbook
     listKind: GuestbookList
     plural: guestbooks
+    shortNames:
+    - gb
     singular: guestbook
   scope: Namespaced
   subresources:
@@ -36,10 +38,6 @@ spec:
             redisMaster:
               type: string
             redisSlave:
-              description: 'INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
-                Important: Run "operator-sdk generate k8s" to regenerate code after
-                modifying this file Add custom validation using kubebuilder tags:
-                https://book-v1.book.kubebuilder.io/beyond_basics/generating_crd.html'
               type: string
           required:
           - guestBook

@@ -2,6 +2,7 @@ package guestbook
 
 import (
 	"context"
+	"fmt"
 
 	gurunathv1alpha1 "github.com/gurunath/guestbook/pkg/apis/gurunath/v1alpha1"
 	appsv1 "k8s.io/api/apps/v1"
@@ -10,6 +11,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/tools/record"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -21,6 +23,16 @@ import (
 )
 
 var log = logf.Log.WithName("controller_guestbook")
+
+// ReconcileGuestbook reconciles a Guestbook object
+// +kubebuilder:rbac:groups="",resources=events,verbs=create;patch
+type ReconcileGuestbook struct {
+	// This client, initialized using mgr.Client() above, is a split client
+	// that reads objects from the cache and writes to the apiserver
+	client   client.Client
+	scheme   *runtime.Scheme
+	recorder record.EventRecorder
+}
 
 /**
 * USER ACTION REQUIRED: This is a scaffold file intended for the user to modify with their own Controller
@@ -35,7 +47,11 @@ func Add(mgr manager.Manager) error {
 
 // newReconciler returns a new reconcile.Reconciler
 func newReconciler(mgr manager.Manager) reconcile.Reconciler {
-	return &ReconcileGuestbook{client: mgr.GetClient(), scheme: mgr.GetScheme()}
+	return &ReconcileGuestbook{
+		client:   mgr.GetClient(),
+		scheme:   mgr.GetScheme(),
+		recorder: mgr.GetEventRecorderFor("guestbook-controller"),
+	}
 }
 
 // add adds a new Controller to mgr with r as the reconcile.Reconciler
@@ -68,21 +84,6 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 // blank assignment to verify that ReconcileGuestbook implements reconcile.Reconciler
 var _ reconcile.Reconciler = &ReconcileGuestbook{}
 
-// ReconcileGuestbook reconciles a Guestbook object
-type ReconcileGuestbook struct {
-	// This client, initialized using mgr.Client() above, is a split client
-	// that reads objects from the cache and writes to the apiserver
-	client client.Client
-	scheme *runtime.Scheme
-}
-
-// Reconcile reads that state of the cluster for a Guestbook object and makes changes based on the state read
-// and what is in the Guestbook.Spec
-// TODO(user): Modify this Reconcile function to implement your Controller logic.  This example creates
-// a Pod as an example
-// Note:
-// The Controller will requeue the Request to be processed again if the returned error is non-nil or
-// Result.Requeue is true, otherwise upon completion it will remove the work from the queue.
 func (r *ReconcileGuestbook) Reconcile(request reconcile.Request) (reconcile.Result, error) {
 	reqLogger := log.WithValues("Request.Namespace", request.Namespace, "Request.Name", request.Name)
 	reqLogger.Info("Reconciling Guestbook")
@@ -92,12 +93,8 @@ func (r *ReconcileGuestbook) Reconcile(request reconcile.Request) (reconcile.Res
 	err := r.client.Get(context.TODO(), request.NamespacedName, guestbook)
 	if err != nil {
 		if errors.IsNotFound(err) {
-			// Request object not found, could have been deleted after reconcile request.
-			// Owned objects are automatically garbage collected. For additional cleanup logic use finalizers.
-			// Return and don't requeue
 			return reconcile.Result{}, nil
 		}
-		// Error reading the object - requeue the request.
 		return reconcile.Result{}, err
 	}
 
@@ -112,6 +109,8 @@ func (r *ReconcileGuestbook) Reconcile(request reconcile.Request) (reconcile.Res
 			reqLogger.Error(err, "Failed to create new Deployment", "Deployment.Namespace", dep.Namespace, "Deployment.Name", dep.Name)
 			return reconcile.Result{}, err
 		}
+
+		r.recorder.Event(guestbook, corev1.EventTypeNormal, "Created", fmt.Sprintf("Created redis master deployment %s/%s", dep.Namespace, dep.Name))
 		return reconcile.Result{Requeue: true}, nil
 	} else if err != nil {
 		reqLogger.Error(err, "Failed to get Deployment")
@@ -127,7 +126,7 @@ func (r *ReconcileGuestbook) Reconcile(request reconcile.Request) (reconcile.Res
 			reqLogger.Error(err, "Failed to update Deployment", "Deployment.Namespace", master.Namespace, "Deployment.Name", master.Name)
 			return reconcile.Result{}, err
 		}
-		// Spec updated - return and requeue
+		r.recorder.Event(guestbook, corev1.EventTypeNormal, "Scaled", fmt.Sprintf("Scaled redis master deployment %q to %d replicas", *master.Spec.Replicas, masterSize))
 		return reconcile.Result{Requeue: true}, nil
 	}
 
@@ -152,6 +151,7 @@ func (r *ReconcileGuestbook) Reconcile(request reconcile.Request) (reconcile.Res
 			reqLogger.Error(err, "Failed to create new Service", "Service.Namespace", ser.Namespace, "Service.Name", ser.Name)
 			return reconcile.Result{}, err
 		}
+		r.recorder.Event(guestbook, corev1.EventTypeNormal, "Created", fmt.Sprintf("created redis master service %s for deployment %s ", ser.Name, master.Name))
 		return reconcile.Result{Requeue: true}, nil
 	} else if err != nil {
 		reqLogger.Error(err, "Failed to get Service")
@@ -169,6 +169,7 @@ func (r *ReconcileGuestbook) Reconcile(request reconcile.Request) (reconcile.Res
 			reqLogger.Error(err, "Failed to create new Slave Deployment", "Deployment.Namespace", dep.Namespace, "Deployment.Name", dep.Name)
 			return reconcile.Result{}, err
 		}
+		r.recorder.Event(guestbook, corev1.EventTypeNormal, "Created", fmt.Sprintf("Created redis slave deployment %s/%s", dep.Namespace, dep.Name))
 		// Deployment created successfully - return and requeue
 		return reconcile.Result{Requeue: true}, nil
 	} else if err != nil {
@@ -184,7 +185,8 @@ func (r *ReconcileGuestbook) Reconcile(request reconcile.Request) (reconcile.Res
 			reqLogger.Error(err, "Failed to update slave Deployment", "Deployment.Namespace", slave.Namespace, "Deployment.Name", slave.Name)
 			return reconcile.Result{}, err
 		}
-		// Spec updated - return and requeue
+
+		r.recorder.Event(guestbook, corev1.EventTypeNormal, "Scaled", fmt.Sprintf("Scaled redis slave deployment %q to %d replicas", *slave.Spec.Replicas, slaveSize))
 		return reconcile.Result{Requeue: true}, nil
 	}
 
@@ -209,6 +211,7 @@ func (r *ReconcileGuestbook) Reconcile(request reconcile.Request) (reconcile.Res
 			reqLogger.Error(err, "Failed to create new slave Service", "Service.Namespace", ser.Namespace, "Service.Name", ser.Name)
 			return reconcile.Result{}, err
 		}
+		r.recorder.Event(guestbook, corev1.EventTypeNormal, "Created", fmt.Sprintf("created redis slave service %s for deployment %s ", ser.Name, slave.Name))
 		return reconcile.Result{Requeue: true}, nil
 	} else if err != nil {
 		reqLogger.Error(err, "Failed to get Service")
@@ -227,7 +230,7 @@ func (r *ReconcileGuestbook) Reconcile(request reconcile.Request) (reconcile.Res
 			reqLogger.Error(err, "Failed to create new frontend Deployment", "Deployment.Namespace", dep.Namespace, "Deployment.Name", dep.Name)
 			return reconcile.Result{}, err
 		}
-		// Deployment created successfully - return and requeue
+		r.recorder.Event(guestbook, corev1.EventTypeNormal, "Created", fmt.Sprintf("Created frontend deployment %s/%s", dep.Namespace, dep.Name))
 		return reconcile.Result{Requeue: true}, nil
 	} else if err != nil {
 		reqLogger.Error(err, "Failed to get slave Deployment")
@@ -242,7 +245,7 @@ func (r *ReconcileGuestbook) Reconcile(request reconcile.Request) (reconcile.Res
 			reqLogger.Error(err, "Failed to update frontend Deployment", "frontend.Namespace", frontend.Namespace, "frontend.Name", frontend.Name)
 			return reconcile.Result{}, err
 		}
-		// Spec updated - return and requeue
+		r.recorder.Event(guestbook, corev1.EventTypeNormal, "Scaled", fmt.Sprintf("Scaled frontend deployment %q to %d replicas", *frontend.Spec.Replicas, frontendSize))
 		return reconcile.Result{Requeue: true}, nil
 	}
 
@@ -267,6 +270,7 @@ func (r *ReconcileGuestbook) Reconcile(request reconcile.Request) (reconcile.Res
 			reqLogger.Error(err, "Failed to create new frontend Service", "Service.Namespace", ser.Namespace, "Service.Name", ser.Name)
 			return reconcile.Result{}, err
 		}
+		r.recorder.Event(guestbook, corev1.EventTypeNormal, "Created", fmt.Sprintf("created frontend service %s for deployment %s ", ser.Name, slave.Name))
 		return reconcile.Result{Requeue: true}, nil
 	} else if err != nil {
 		reqLogger.Error(err, "Failed to get Service")

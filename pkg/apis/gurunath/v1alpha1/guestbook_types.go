@@ -12,6 +12,7 @@ type GuestbookSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "operator-sdk generate k8s" to regenerate code after modifying this file
 	// Add custom validation using kubebuilder tags: https://book-v1.book.kubebuilder.io/beyond_basics/generating_crd.html
+
 	RedisSlave  string `json:"redisSlave"`
 	RedisMaster string `json:"redisMaster"`
 	GuestBook   string `json:"guestBook"`
@@ -31,8 +32,10 @@ type GuestbookStatus struct {
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
 // Guestbook is the Schema for the guestbooks API
+// +k8s:openapi-gen=true
 // +kubebuilder:subresource:status
-// +kubebuilder:resource:path=guestbooks,scope=Namespaced
+// +kubebuilder:resource:path=guestbooks,shortName=gb
+// +kubebuilder:singular=guestbook
 type Guestbook struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
