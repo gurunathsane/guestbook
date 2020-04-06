@@ -26,6 +26,7 @@ var log = logf.Log.WithName("controller_guestbook")
 
 // ReconcileGuestbook reconciles a Guestbook object
 // +kubebuilder:rbac:groups="",resources=events,verbs=create;patch
+// +kubebuilder:rbac:groups="",resources=deployments,verbs=get;watch;list
 type ReconcileGuestbook struct {
 	// This client, initialized using mgr.Client() above, is a split client
 	// that reads objects from the cache and writes to the apiserver
@@ -68,12 +69,16 @@ func add(mgr manager.Manager, r reconcile.Reconciler) error {
 		return err
 	}
 
-	// TODO(user): Modify this to be the types you create that are owned by the primary resource
-	// Watch for changes to secondary resource Pods and requeue the owner Guestbook
-	err = c.Watch(&source.Kind{Type: &corev1.Pod{}}, &handler.EnqueueRequestForOwner{
+	err = c.Watch(&source.Kind{Type: &appsv1.Deployment{}}, &handler.EnqueueRequestForOwner{
 		IsController: true,
 		OwnerType:    &gurunathv1alpha1.Guestbook{},
 	})
+
+	err = c.Watch(&source.Kind{Type: &corev1.Service{}}, &handler.EnqueueRequestForOwner{
+		IsController: true,
+		OwnerType:    &gurunathv1alpha1.Guestbook{},
+	})
+
 	if err != nil {
 		return err
 	}
