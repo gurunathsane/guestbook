@@ -60,5 +60,5 @@ I will update this repo step by step and tag it from 00. I will try to explain h
   - after docker image build push the image to repo.
   - create deployment, role, role binding and service account for the operator. Operator-sdk provide manifests files in `deploy` directory 
 
-- **Demo
+- **Demo**
   - Deployed this operator as [Katakoda scenario](https://www.katacoda.com/gurunath.sane@gmail.com/scenarios/guestbook-operator) please take a look. 
